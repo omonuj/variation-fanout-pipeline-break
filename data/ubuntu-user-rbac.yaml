@@ -1,0 +1,121 @@
+---
+# ServiceAccount for ubuntu user (AI agent)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ubuntu-user
+  namespace: default
+
+---
+# ClusterRole: Read-only access to cluster-level resources including nodes
+# Nodes access is required by the setup.sh DO NOT CHANGE block (kubectl get nodes)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ubuntu-user-cluster-reader
+rules:
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+
+---
+# ClusterRoleBinding: Bind cluster-reader role to ubuntu-user
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ubuntu-user-cluster-reader-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ubuntu-user-cluster-reader
+subjects:
+  - kind: ServiceAccount
+    name: ubuntu-user
+    namespace: default
+
+---
+# Role: Full access to bleater namespace (the main application namespace)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ubuntu-user-bleater-admin
+  namespace: bleater
+rules:
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["*"]
+
+---
+# RoleBinding: Bind bleater admin role to ubuntu-user
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ubuntu-user-bleater-admin-binding
+  namespace: bleater
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ubuntu-user-bleater-admin
+subjects:
+  - kind: ServiceAccount
+    name: ubuntu-user
+    namespace: default
+
+---
+# Role: Full access to bleater-env namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ubuntu-user-bleater-env-admin
+  namespace: bleater-env
+rules:
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["*"]
+
+---
+# RoleBinding: Bind bleater-env admin role to ubuntu-user
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ubuntu-user-bleater-env-admin-binding
+  namespace: bleater-env
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ubuntu-user-bleater-env-admin
+subjects:
+  - kind: ServiceAccount
+    name: ubuntu-user
+    namespace: default
+
+---
+# Role: Full access to default namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ubuntu-user-default-admin
+  namespace: default
+rules:
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["*"]
+
+---
+# RoleBinding: Bind default namespace admin role to ubuntu-user
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ubuntu-user-default-admin-binding
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ubuntu-user-default-admin
+subjects:
+  - kind: ServiceAccount
+    name: ubuntu-user
+    namespace: default
