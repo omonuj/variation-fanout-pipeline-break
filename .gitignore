@@ -1,0 +1,9 @@
+# Generated run artifacts
+.rollouts/
+.validation/
+__pycache__/
+*.pyc
+
+# Internal tooling / authoring methodology — not part of the task definition
+.claude/
+.horizon/
