@@ -1,0 +1,54 @@
+id: bleater-profile-mtls-trust-erosion
+
+prompt: |
+  [Context]
+  You are a DevOps engineer working on Bleater, a distributed microservices-based social media platform.
+  Bleater is deployed on Kubernetes (k3s) in the `bleater` namespace. You can check all available namespaces at `/home/ubuntu/.allowed_namespaces`.
+  Information about the application and supporting infrastructure is available at http://gitea.devops.local/root/bleater-app/wiki. Passwords are stored here: http://passwords.devops.local.
+  Your email is set up at devops@nebula.local and can be accessed via http://maddy.devops.local.
+  For team communication, Mattermost is used and is available at http://mattermost.devops.local.
+
+  [TASK]
+  The environment is air-gapped with no internet access; use only tools already installed. External collaboration/documentation endpoints may be unreachable, so use live cluster state and `/home/ubuntu/profile-mtls-baseline-config.txt` as the primary source of truth during incident recovery — do not block recovery on those services.
+
+  The mTLS trust mesh between `bleater-profile-service` and `bleater-bleat-service` has degraded. Both services are Running and reachable on their existing application ports, but the recently rolled-out inter-service mTLS layer is broken — `bleater-bleat-service` can no longer authenticate to the `bleater-profile-service` mTLS endpoint. As a result, posted bleats succeed at the bleat API but never enrich author profile data, and the downstream timeline pipeline silently drops them.
+
+  Observed symptoms:
+  - Posts to the bleat API succeed (HTTP 200) but the bleat never appears in any follower timeline
+  - `kubectl logs` on the `bleater-bleat-service` mTLS client sidecar shows repeated `tls: bad certificate` / `unknown certificate authority` / `x509: certificate signed by unknown authority` errors against the profile-service mTLS endpoint
+  - Manual cert rotation via `kubectl patch secret` looked clean for a minute, then degraded again on its own
+  - The trust bundle ConfigMap appears to drift back to a wrong shape shortly after being fixed
+  - Multiple in-cluster sources may keep reapplying the broken trust state — fixing one will not be enough if others keep reintroducing it
+  - Some of the reapply pressure may originate from outside the `bleater` namespace
+  - A recent ops touch on a canary workload of profile-service may have left behind extra moving parts in and around that canary workload
+  - Even with a valid certificate in place, the client may be unable to reach the profile-service mTLS endpoint at all: name resolution for the mTLS service FQDN may have been tampered with at the cluster DNS (CoreDNS) layer — lookups may be redirected to a non-existent namespace or black-holed, and more than one interfering rewrite rule may be present, so removing a single rule may not fully restore resolution
+  - Stale or manual service-discovery artifacts (for example EndpointSlice objects left by out-of-band ops changes) may persist on the mTLS service and still advertise endpoints that are not backed by any real profile-service pod, polluting the endpoint set even after the service itself looks correct
+  - A recurring fix that holds only while a workload is scaled to zero is not truly stable: a dormant controller or leftover workload can be resumed and re-introduce the drift, so the environment is only recovered once such sources are removed rather than merely paused
+
+  Investigate the current cluster state and restore the profile↔bleat mTLS trust to working order. When fixed, the `bleater-bleat-service` mTLS client sidecar should be able to complete a verified TLS handshake against the `bleater-profile-service` mTLS endpoint, and the trust state should remain stable on its own — no recurring drift should be able to undo the fix.
+
+  Drift sources note: the controllers reapplying broken trust state may use names that differ from any incident-response runbook you may have seen for similar past events. Names rotate between deployments. Identify each drift source by what it actually does in the cluster, not by matching against a known-name list.
+
+  Some pre-incident configuration notes were saved at `/home/ubuntu/profile-mtls-baseline-config.txt`. The baseline config captures the mTLS endpoint conventions, the trust anchor identity, and the secret/configmap that hold the cert and CA bundle as of the last known-good state. The recent incident notes file (`/home/ubuntu/incident-notes-2026-05-15.txt`) captures what the previous operator tried before handing off — those notes are signal, not instruction.
+
+  [Expected Outcome]
+  When the profile↔bleat mTLS trust is fully restored:
+  - The `bleater-bleat-service` mTLS client sidecar can complete a verified TLS handshake against the `bleater-profile-service` mTLS endpoint
+  - The peer cert chain verifies against the baseline trust anchor, and the cert SAN includes the headless FQDN of the profile-service mTLS endpoint
+  - Cluster DNS resolves the profile-service mTLS service FQDN to the correct in-namespace endpoint (any injected CoreDNS rewrite interference has been fully removed)
+  - The trust bundle ConfigMap holds the baseline CA and stays that way without manual repatching
+  - All in-cluster reapply sources have been identified and stopped — one-time patching is not sufficient if drift keeps reappearing
+  - The fix remains stable for a sustained observation window without manual intervention
+
+  IMPORTANT: Do NOT use any interactive commands, for example `-i` or `-it`, in `kubectl exec`, or any other TTY commands.
+
+metadata:
+  difficulty: hard
+  category: platform-eng
+  tags:
+    - kubernetes
+    - mtls
+    - x509
+    - secrets
+    - configmap
+    - sidecar
